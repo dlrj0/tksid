@@ -1226,6 +1226,12 @@
             let wheelTimer;
             doc.onwheel = (e) => {
                 if(isStaleMainDoc()) return;
+                // [WHEEL-FIX] 설정 팝업(스크롤 가능한 영역)이나 dock/top-bar 위에서 휠을
+                // 굴릴 때는 빠른 재시작을 발동시키면 안 된다. 이전엔 이 체크가 없어서
+                // 설정 메뉴 안의 내용을 스크롤하려고 휠을 굴리면 의도치 않게 타이머가
+                // 재시작되는 버그가 있었다(click/dblclick 핸들러엔 이미 있던 예외 처리를
+                // wheel에도 동일하게 적용).
+                if(e.target.closest('.popup-content') || e.target.closest('.dock') || e.target.closest('.top-bar')) return;
                 e.preventDefault();
                 if(wheelTimer) return;
                 wheelTimer = setTimeout(() => wheelTimer = null, 80);
