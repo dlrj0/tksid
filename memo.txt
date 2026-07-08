@@ -1,2 +1,4 @@
 https://github.com/dlrj0/tksid/raw/refs/heads/main/%ED%99%95%EC%9E%A5%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8.zip
 https://github.com/dlrj0/tksid/raw/refs/heads/main/프로그램.zip
+
+팝업에 버튼잇으면 사이트이동안해도될거같음
