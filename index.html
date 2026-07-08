@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MesoTimer v5.3</title>
+    <link id="favicon" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22none%22 stroke=%22%2371717a%22 stroke-width=%2210%22/></svg>">
+    <style>
+        /* [v5.3 REFINED - Preset Indicator, Instant Stats Reset, PiP Toggle] */
+        :root {
+            --bg: #f4f4f5;
+            --bg-paused: #e4e4e7;
+            --surface: rgba(0, 0, 0, 0.05);
+            --surface-hover: rgba(0, 0, 0, 0.08);
+            --border: rgba(0, 0, 0, 0.1);
+            --text-main: #18181b;
+            --text-dim: #71717a;
+            --accent: #10b981;
+            --danger: #ef4444;
+            --loop: #f59e0b;
+            --save: #3b82f6; 
+            --load: #8b5cf6; 
+            --progress: rgba(16, 185, 129, 0.15);
+            --shadow: rgba(0,0,0,0.1);
+            --font-num: 'SF Mono', 'Menlo', 'Consolas', 'Monaco', monospace;
+            --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+        }
+
+        [data-theme="dark"] {
+            --bg: #09090b;
+            --bg-paused: #18181b;
+            --surface: rgba(255, 255, 255, 0.08);
+            --surface-hover: rgba(255, 255, 255, 0.12);
+            --border: rgba(255, 255, 255, 0.15);
+            --text-main: #ffffff;
+            --text-dim: #a1a1aa;
+            --progress: rgba(16, 185, 129, 0.2);
+            --shadow: rgba(0,0,0,0.5);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg); color: var(--text-main);
+            font-family: var(--font-ui);
+            height: 100vh; width: 100vw;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            overflow: hidden; user-select: none;
+            transition: background-color 0.2s;
+            cursor: pointer;
+        }
+        body.is-paused { background-color: var(--bg-paused); }
+
+        .progress-layer {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+            background-color: var(--progress); border-top: 3px solid var(--accent);
+            opacity: 0.5; z-index: 0; 
+            transition: none; 
+            pointer-events: none; will-change: height;
+        }
+        body.no-visual .progress-layer { display: none !important; }
+
+        .timer-wrapper { z-index: 2; text-align: center; width: 100%; pointer-events: none; }
+        body.no-text .timer-wrapper { opacity: 0; transition: opacity 0.3s; }
+        body.no-text.is-paused .timer-wrapper { opacity: 1 !important; }
+
+        #timerDisplay {
+            font-size: 26vw; font-family: var(--font-num); font-weight: 800;
+            letter-spacing: -0.05em; line-height: 0.9; font-variant-numeric: tabular-nums;
+            text-shadow: 0 10px 40px var(--shadow);
+            pointer-events: none; 
+        }
+        body.mode-ms-1 #timerDisplay { font-size: 20vw; letter-spacing: -0.06em; } 
+        body.mode-ms-2 #timerDisplay { font-size: 17vw; letter-spacing: -0.07em; } 
+        @media (min-width: 600px) { 
+            #timerDisplay { font-size: 160px; } 
+            body.mode-ms-1 #timerDisplay { font-size: 130px; }
+            body.mode-ms-2 #timerDisplay { font-size: 110px; }
+        }
+        @media (max-height: 300px) { #timerDisplay { font-size: 35vh; } }
+
+        .paused-anim { opacity: 0.5; animation: breathe 2s infinite ease-in-out; }
+        @keyframes breathe { 50% { opacity: 0.8; } }
+
+        #statusLabel { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.2em; color: var(--text-dim); margin-bottom: 2vh; text-transform: uppercase; }
+
+        .top-bar {
+            position: absolute; top: 0; left: 0; right: 0; padding: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            z-index: 50; transition: opacity 0.3s; opacity: 0; pointer-events: none;
+        }
+        .loot-badge {
+            display: flex; align-items: center; gap: 8px; background: var(--surface);
+            padding: 8px 16px; border-radius: 12px; border: 1px solid var(--border);
+            font-size: 0.9rem; color: var(--text-dim); cursor: pointer; transition: 0.2s; font-weight: 600;
+            pointer-events: auto;
+        }
+        .loot-badge:hover { border-color: var(--text-dim); color: var(--text-main); transform: translateY(-1px); }
+        .loot-badge:active { transform: scale(0.95); }
+        .loot-badge span { color: var(--accent); font-family: var(--font-num); font-size: 1rem; }
+        .pop { animation: popAnim 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popAnim { 50% { transform: scale(1.5); color: var(--loop); } }
+
+        .right-group { display: flex; gap: 10px; align-items: center; position: relative; pointer-events: auto; }
+        .icon-btn {
+            width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-dim); background: var(--surface); border: 1px solid var(--border);
+            cursor: pointer; transition: 0.2s; flex-shrink: 0;
+        }
+        .icon-btn:hover { background: var(--surface-hover); color: var(--text-main); border-color: var(--text-dim); }
+        .icon-btn.active { color: var(--active); background: rgba(59, 130, 246, 0.15); border-color: var(--active); }
+        .icon-btn svg { width: 20px; height: 20px; fill: currentColor; }
+        .icon-btn.mode-warning { color: var(--danger); background: rgba(239, 68, 68, 0.15); border-color: var(--danger); animation: modeWarnPulse 1.2s infinite; }
+        @keyframes modeWarnPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+        .popup-wrapper { position: relative; }
+        .popup-content {
+            position: absolute; top: 50px; right: 0; width: 360px;
+            max-width: 90vw; max-height: 80vh;
+            background: var(--bg); border: 1px solid var(--border);
+            padding: 16px; border-radius: 16px; font-size: 0.8rem; color: var(--text-dim);
+            visibility: hidden; opacity: 0; transform: translateY(10px);
+            transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none; z-index: 100;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3); text-align: left;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+            overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
+        }
+        .popup-content.show { visibility: visible; opacity: 1; transform: translateY(0); pointer-events: auto; }
+        
+        .full-width { grid-column: span 2; }
+        .lang-toggle { display:flex; justify-content:flex-end; margin-bottom: -6px; grid-column: span 2; }
+        .lang-btn { background:none; border:none; color:var(--text-dim); font-size:0.7rem; font-weight:700; cursor:pointer; padding:2px 6px; border-radius:4px; }
+        .lang-btn.active { color:var(--accent); background:var(--surface); }
+
+        .section-title { font-size: 0.65rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; }
+        
+        .stats-dashboard { 
+            grid-column: span 2; display: flex; justify-content: space-between; align-items: center; 
+            background: var(--surface); padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; 
+            border: 1px solid var(--border); cursor: pointer; transition: 0.2s;
+        }
+        .stats-dashboard:hover { background: var(--surface-hover); }
+        .stats-dashboard:active { transform: scale(0.98); }
+        .stats-val { font-family: var(--font-num); font-weight: 700; color: var(--text-main); }
+
+        .preset-grid { 
+            grid-column: span 2; display: grid; grid-template-columns: auto repeat(4, 1fr); gap: 4px; align-items: center; 
+            background: var(--surface); padding: 8px; border-radius: 8px; border: 1px solid var(--border);
+        }
+        .preset-label { font-size: 0.65rem; font-weight: 800; color: var(--text-dim); text-align: right; padding-right: 4px; }
+        .preset-btn { 
+            padding: 6px 0; border: 1px solid var(--border); border-radius: 6px; 
+            font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: 0.2s; color: #fff;
+        }
+        .btn-save { background: rgba(59, 130, 246, 0.15); color: var(--save); border-color: rgba(59, 130, 246, 0.3); }
+        .btn-save:hover { background: var(--save); color: #fff; }
+        .btn-load { background: rgba(139, 92, 246, 0.15); color: var(--load); border-color: rgba(139, 92, 246, 0.3); }
+        .btn-load:hover { background: var(--load); color: #fff; }
+
+        /* Highlight for active preset button if needed, but Title is enough */
+        
+        .settings-col { display: flex; flex-direction: column; gap: 8px; }
+        .settings-row { display: flex; flex-direction: column; gap: 4px; }
+        .settings-label-row { display: flex; justify-content: space-between; font-weight: 600; color: var(--text-main); font-size: 0.75rem; }
+        
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 4px; border-radius: 2px; }
+        input[type=checkbox] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+        .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; cursor: pointer; user-select: none; color: var(--text-main); font-weight: 500; }
+        
+        .cycle-btn { width:100%; padding:4px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:0.75rem; font-weight:600; cursor:pointer; transition:0.2s; }
+        select { width: 100%; padding: 4px; border-radius: 6px; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); outline: none; cursor: pointer; font-size: 0.75rem; }
+        
+        .help-container { grid-column: span 2; background: var(--surface); padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
+        .help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+        .help-item { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-dim); }
+        .key-badge { display: inline-block; padding: 1px 4px; border-radius: 3px; background: var(--text-main); color: var(--bg); font-family: var(--font-num); font-size: 0.65rem; font-weight: 700; min-width: 16px; text-align: center; }
+
+        .btn-reset { width: 100%; padding: 10px; background: var(--surface); color: var(--danger); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 0.7rem; transition: 0.2s; grid-column: span 2; margin-top: 4px; }
+        .btn-reset:hover { background: rgba(239, 68, 68, 0.1); border-color: var(--danger); }
+
+        .dock {
+            position: absolute; bottom: 24px; display: flex; align-items: center; gap: 8px;
+            background: var(--surface); padding: 10px 16px; border-radius: 16px;
+            border: 1px solid var(--border); backdrop-filter: blur(12px);
+            transition: 0.1s; 
+            z-index: 999; 
+            box-shadow: 0 10px 20px -5px var(--shadow);
+            transform-origin: bottom center; pointer-events: auto;
+            white-space: nowrap;
+        }
+        body:hover .top-bar, body:hover .dock, .top-bar.menu-open, body.is-paused .dock, body.is-paused .top-bar { opacity: 1; pointer-events: auto; }
+
+        .input-group, .loop-group { display: flex; align-items: center; gap: 6px; padding-right: 10px; margin-right: 10px; border-right: 1px solid var(--border); }
+        input[type="number"] { background: transparent; border: none; outline: none; color: var(--text-main); font-family: var(--font-num); font-size: 1.1rem; width: 60px; text-align: center; font-weight: 800; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .loop-input { width: 0; overflow: hidden; transition: 0.3s; opacity: 0; border-bottom: 1px solid var(--text-dim); }
+        .loop-active .loop-input { width: 48px; opacity: 1; margin-left: 4px; }
+        .loop-active .icon-btn { color: var(--loop); border-color: var(--loop); background: rgba(245, 158, 11, 0.1); }
+
+        .alarm-state { animation: panicPulse 1s infinite; }
+        .alarm-state .progress-layer { background-color: var(--danger) !important; height: 100% !important; opacity: 0.3 !important; display: block !important; border-top: none; }
+        .alarm-state #timerDisplay { color: var(--danger) !important; text-shadow: none; animation: shake 0.5s ease-in-out infinite; }
+        .alarm-state #statusLabel { color: var(--danger) !important; }
+        @keyframes panicPulse { 0%, 100% { background-color: var(--bg); } 50% { background-color: #3f1919; } }
+        [data-theme="light"] .alarm-state { animation: panicPulseLight 1s infinite; }
+        @keyframes panicPulseLight { 0%, 100% { background-color: #fff; } 50% { background-color: #ffe0e0; } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+
+        .ripple { position: absolute; border-radius: 50%; background: var(--text-dim); opacity: 0.2; transform: scale(0); animation: rippleAnim 0.6s linear; pointer-events: none; z-index: 1; }
+        @keyframes rippleAnim { to { transform: scale(4); opacity: 0; } }
+
+        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; cursor: pointer; transition: opacity 0.5s; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <h1 style="font-weight:300; margin-bottom:10px; color:#fff; letter-spacing: 2px;">MESO TIMER <span style="font-size:0.5em; opacity:0.5;">v5.3</span></h1>
+        <p style="color:#888; font-size:0.9rem;">CLICK TO START</p>
+    </div>
+
+    <div id="app-container" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+        <div class="progress-layer" id="progressFill"></div>
+
+        <div class="top-bar" id="topBar">
+            <div class="loot-badge" id="btnLoot" title="Reset Loot Count">
+                LOOT <span id="lootCount">0</span>
+            </div>
+
+            <div class="right-group">
+                <button class="icon-btn" id="btnTheme" title="Theme Toggle (T)">
+                    <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.93c.39-.39.39-1.02 0-1.41-.39-.39-1.02-.39-1.41 0-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0zm13.31 15.54c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41-.39-.39-1.02-.39-1.41 0-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0zm14.72-14.82c.39-.39.39-1.02 0-1.41-.39-.39-1.02-.39-1.41 0-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0z"/></svg>
+                </button>
+                
+                <div class="popup-wrapper">
+                    <button class="icon-btn" id="btnMenu" title="Settings">
+                        <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+                    </button>
+                    
+                    <div class="popup-content" id="menuPopup">
+                        <div class="lang-toggle">
+                            <button class="lang-btn" onclick="actions.setLang('kr')">KR</button>
+                            <span style="color:var(--border); margin:0 4px;">|</span>
+                            <button class="lang-btn" onclick="actions.setLang('en')">EN</button>
+                        </div>
+
+                        <!-- 1. Stats Dashboard -->
+                        <div class="section-title" data-t="titleStats">SESSION INFO (CLICK TO RESET)</div>
+                        <div class="stats-dashboard" id="btnStatsReset" title="Click to Reset Stats">
+                            <span data-t="lblTotalRun">Total Run</span>
+                            <span id="statsRunTime" class="stats-val">0m</span>
+                        </div>
+
+                        <!-- 2. Presets Grid -->
+                        <div class="section-title">
+                            <span data-t="titlePresets">PRESETS</span> 
+                            <span id="activePresetLabel" style="color:var(--accent); font-weight:800; margin-left:4px;">[None]</span>
+                        </div>
+                        <div class="preset-grid">
+                            <span class="preset-label" data-t="lblSave">SAVE</span>
+                            <button class="preset-btn btn-save" onclick="actions.savePreset('1')">1</button>
+                            <button class="preset-btn btn-save" onclick="actions.savePreset('2')">2</button>
+                            <button class="preset-btn btn-save" onclick="actions.savePreset('3')">3</button>
+                            <button class="preset-btn btn-save" onclick="actions.savePreset('4')">4</button>
+                            
+                            <span class="preset-label" data-t="lblLoad">LOAD</span>
+                            <button class="preset-btn btn-load" onclick="actions.loadPreset('1')">1</button>
+                            <button class="preset-btn btn-load" onclick="actions.loadPreset('2')">2</button>
+                            <button class="preset-btn btn-load" onclick="actions.loadPreset('3')">3</button>
+                            <button class="preset-btn btn-load" onclick="actions.loadPreset('4')">4</button>
+                        </div>
+
+                        <!-- 3. Left Column -->
+                        <div class="settings-col">
+                            <div class="section-title" style="margin-top:10px;" data-t="titleAudio">AUDIO</div>
+                            <div class="settings-row">
+                                <div class="settings-label-row">
+                                    <span data-t="lblVol">VOL</span> <span id="volLabel">100%</span>
+                                </div>
+                                <input type="range" id="volRange" min="0" max="1000" value="5">
+                            </div>
+                            <select id="soundTypeSel">
+                                <option value="arcade">Arcade</option>
+                                <option value="siren">Siren</option>
+                                <option value="chime">Chime</option>
+                                <option value="beep">Beep</option>
+                            </select>
+                            <div class="settings-row">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="randomMelodyCheck"> <span data-t="chkRandom">Random</span>
+                                </label>
+                            </div>
+                            <div class="settings-row" style="margin-top:6px;">
+                                <div class="settings-label-row">
+                                    <span data-t="lblDuration">ALARM</span> <span id="alarmTimeLabel">3.0s</span>
+                                </div>
+                                <input type="range" id="alarmTimeRange" min="0.1" max="30" step="0.1" value="3.0">
+                            </div>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="syncLoopCheck"> <span data-t="chkSync">Sync Loop</span>
+                            </label>
+                        </div>
+
+                        <!-- 4. Right Column -->
+                        <div class="settings-col">
+                            <div class="section-title" style="margin-top:10px;" data-t="titlePerf">SYSTEM</div>
+                            <div class="settings-row">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="antiThrottleCheck" checked>
+                                    <span style="color:var(--accent); font-weight:700;" data-t="chkAntiThrottle">Phantom Audio</span>
+                                </label>
+                                <div style="font-size:0.65rem; color:var(--text-dim); line-height:1.1;" data-t="descAntiThrottle">Background Active. 0% Sound.</div>
+                            </div>
+                            <div class="settings-row">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="wakeLockCheck"> <span data-t="chkWakeLock">WakeLock</span>
+                                </label>
+                            </div>
+
+                            <div class="section-title" style="margin-top:10px;" data-t="titleDisplay">DISPLAY</div>
+                            <div class="settings-row">
+                                <div class="settings-label-row">
+                                    <span data-t="lblPrecision">Precision</span>
+                                </div>
+                                <button class="cycle-btn" id="btnPrecision" onclick="actions.togglePrecision()">0.0</button>
+                            </div>
+                            <label class="checkbox-label" style="margin-top:4px;">
+                                <input type="checkbox" id="titleUpdateCheck" checked> <span data-t="chkTitle">Tab Title</span>
+                            </label>
+                        </div>
+
+                        <!-- 5. Shortcuts / Help -->
+                        <div class="section-title full-width" style="margin-top:10px;" data-t="titleHelp">SHORTCUTS & HELP</div>
+                        <div class="help-container">
+                            <div class="help-grid">
+                                <div class="help-item"><span data-t="helpStart">Start/Stop</span> <span class="key-badge">Space</span></div>
+                                <div class="help-item"><span data-t="helpReset">Reset</span> <span class="key-badge">R</span></div>
+                                <div class="help-item"><span data-t="helpFastReset">Fast Reset</span> <span class="key-badge">Wheel</span></div>
+                                <div class="help-item"><span data-t="helpFullReset">Full Reset</span> <span class="key-badge">Dbl Click</span></div>
+                                <div class="help-item"><span data-t="helpLoop">Loop Mode</span> <span class="key-badge">L</span></div>
+                                <div class="help-item"><span data-t="helpMute">Mute Toggle</span> <span class="key-badge">M</span></div>
+                                <div class="help-item"><span data-t="helpPip">PiP Toggle</span> <span class="key-badge">P</span></div>
+                                <div class="help-item"><span data-t="helpMenu">Menu/Pause</span> <span class="key-badge">Click BG</span></div>
+                            </div>
+                        </div>
+
+                        <button class="btn-reset" id="btnResetConfig" data-t="btnReset">RESET SETTINGS</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="timer-wrapper">
+            <div id="statusLabel">READY</div>
+            <div id="timerDisplay">60</div>
+        </div>
+
+        <div class="dock" id="controls">
+            <div class="input-group">
+                <svg style="width:16px; height:16px; fill:var(--text-dim)" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/><path d="M12.5 7H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                <input type="number" id="targetTime" value="60" min="0" max="9999" step="0.01" inputmode="decimal" title="Target Time">
+            </div>
+
+            <div class="loop-group" id="loopGroup">
+                <button class="icon-btn" id="btnLoop" title="Loop Mode (L)">
+                    <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                </button>
+                <input type="number" id="loopTime" class="loop-input" value="2" min="0" max="999" step="0.01" inputmode="decimal" title="Loop Wait Time">
+            </div>
+            
+            <button class="icon-btn" id="btnMode" title="Count Direction">
+                <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+            </button>
+            <button class="icon-btn" id="btnText" title="Toggle Text">
+                <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"/></svg>
+            </button>
+            <button class="icon-btn active" id="btnVisual" title="Toggle Visuals">
+                <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            </button>
+            <button class="icon-btn active" id="btnSound" title="Toggle Sound">
+                <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+            </button>
+            <button class="icon-btn" id="btnPip" title="PiP">
+                <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * MesoTimer v5.3 (Refined Experience)
+         * - UX: Current Preset Indicator.
+         * - UX: Instant Stats Reset (No Confirm).
+         * - UX: PiP Toggle with 'P' key (Back/Forth).
+         * - Text: Clarified Phantom Audio description.
+         * - Safety: Zero Data Audio (Speaker Safe).
+         */
+
+        const i18n = {
+            kr: {
+                ready: "준비", paused: "일시정지", remaining: "남은 시간", elapsed: "경과 시간", cooldown: "대기 중", timeup: "시간 종료", loot: "회수",
+                titleAudio: "오디오", titlePerf: "시스템", titleStats: "세션 정보 (클릭 초기화)", titlePresets: "프리셋", titleHelp: "단축키 및 도움말", titleDisplay: "디스플레이",
+                lblVol: "볼륨", lblDuration: "알람 길이", lblTotalRun: "총 가동 시간", lblSave: "저장", lblLoad: "로드",
+                chkRandom: "랜덤 멜로디", chkAntiThrottle: "팬텀 오디오 (무음)", descAntiThrottle: "백그라운드 멈춤 방지 (무음 데이터)",
+                chkWakeLock: "화면 켜짐 유지",
+                chkSync: "대기 시간 동기화", lblPrecision: "정밀도(소수점)", chkTitle: "탭 제목 동기화",
+                helpStart: "시작/정지", helpReset: "초기화", helpFastReset: "빠른 재시작", helpFullReset: "전체 초기화", helpLoop: "반복 모드", 
+                helpMute: "음소거", helpPip: "PIP 토글", helpTheme: "테마 변경", helpMenu: "메뉴/닫기",
+                btnReset: "설정 초기화"
+            },
+            en: {
+                ready: "READY", paused: "PAUSED", remaining: "REMAINING", elapsed: "ELAPSED", cooldown: "COOLDOWN", timeup: "TIME IS UP", loot: "LOOT",
+                titleAudio: "AUDIO", titlePerf: "SYSTEM", titleStats: "SESSION INFO (CLICK RESET)", titlePresets: "PRESETS", titleHelp: "SHORTCUTS & HELP", titleDisplay: "DISPLAY",
+                lblVol: "VOL", lblDuration: "DURATION", lblTotalRun: "Total Run", lblSave: "SAVE", lblLoad: "LOAD",
+                chkRandom: "Random", chkAntiThrottle: "Phantom Audio (Silent)", descAntiThrottle: "Background Active (Silent Data).",
+                chkWakeLock: "Keep Screen On",
+                chkSync: "Sync Loop", lblPrecision: "Precision", chkTitle: "Sync Tab Title",
+                helpStart: "Start/Stop", helpReset: "Reset", helpFastReset: "Fast Reset", helpFullReset: "Full Reset", helpLoop: "Loop Mode", 
+                helpMute: "Mute", helpPip: "PiP Toggle", helpTheme: "Theme", helpMenu: "Menu/Close",
+                btnReset: "RESET SETTINGS"
+            }
+        };
+
+        const workerCode = `
+            let timer = null;
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    if(timer) clearInterval(timer);
+                    timer = setInterval(() => self.postMessage('tick'), 25);
+                } else if (e.data === 'stop') {
+                    if (timer) clearInterval(timer);
+                    timer = null;
+                }
+            };
+        `;
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+
+        const audio = {
+            ctx: null, masterGain: null, compressor: null, nodes: [], interval: null, keepAliveNode: null,
+            init: () => {
+                if (!audio.ctx) {
+                    audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    audio.masterGain = audio.ctx.createGain();
+                    audio.masterGain.connect(audio.ctx.destination);
+                }
+                if (audio.ctx.state === 'suspended') audio.ctx.resume();
+            },
+            toggleKeepAlive: (enable) => {
+                if(enable) {
+                    if(audio.keepAliveNode) return;
+                    audio.init();
+                    try {
+                        const processor = audio.ctx.createScriptProcessor(4096, 1, 1);
+                        processor.onaudioprocess = function(e) {
+                            const output = e.outputBuffer.getChannelData(0);
+                            for (let i = 0; i < output.length; i++) output[i] = 0;
+                        };
+                        processor.connect(audio.ctx.destination);
+                        audio.keepAliveNode = processor;
+                    } catch(e) { console.warn("Phantom Audio Fail", e); }
+                } else {
+                    if(audio.keepAliveNode) {
+                        try { audio.keepAliveNode.disconnect(); } catch(e){}
+                        audio.keepAliveNode = null;
+                    }
+                }
+            },
+            playTone: (freq, type, time, duration) => {
+                const osc = audio.ctx.createOscillator();
+                const gain = audio.ctx.createGain();
+                osc.type = type; osc.frequency.value = freq;
+                osc.connect(gain); gain.connect(audio.masterGain);
+                const vol = state.volume / 1000;
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(vol, time + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+                osc.start(time); osc.stop(time + duration);
+                audio.nodes.push({ osc, gain });
+            },
+            playPattern: (type) => {
+                audio.init();
+                const now = audio.ctx.currentTime;
+                let notes = [];
+                if (type === 'arcade') notes = [[523,0.1],[659,0.1],[783,0.1],[1046,0.1]];
+                else if (type === 'siren') notes = [[880,0.4],[600,0.4]]; 
+                else if (type === 'chime') notes = [[440,0.2],[554,0.2],[659,0.6]];
+                else notes = [[880,0.15]]; 
+                let offset = 0;
+                notes.forEach(n => {
+                    audio.playTone(n[0], (type==='siren'?'sawtooth':type==='arcade'?'square':'sine'), now + offset, n[1]);
+                    offset += n[1];
+                });
+                return offset;
+            },
+            startAlarm: () => {
+                if (!state.sound) return;
+                if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+                if(audio.interval) clearInterval(audio.interval);
+                
+                let melody = state.randomMelody ? ['arcade', 'siren', 'chime', 'beep'][Math.floor(Math.random()*4)] : state.soundType;
+                const patDur = audio.playPattern(melody);
+                const rate = Math.max(patDur * 1000, 200);
+                
+                const thisInterval = setInterval(() => audio.playPattern(melody), rate);
+                audio.interval = thisInterval;
+                
+                if (!state.syncLoop) {
+                    setTimeout(() => { 
+                        if(audio.interval === thisInterval) {
+                            clearInterval(thisInterval);
+                            audio.interval = null;
+                        } else {
+                            clearInterval(thisInterval);
+                        }
+                    }, state.alarmDuration * 1000);
+                }
+            },
+            playPip: (freq) => { if(state.sound) { audio.init(); audio.playTone(freq, 'triangle', audio.ctx.currentTime, 0.1); }},
+            stop: () => {
+                if (audio.interval) { clearInterval(audio.interval); audio.interval = null; }
+                audio.nodes.forEach(n => { try { n.osc.stop(); n.osc.disconnect(); n.gain.disconnect(); } catch(e){} });
+                audio.nodes = [];
+            }
+        };
+
+        const defaultLang = navigator.language.startsWith('ko') ? 'kr' : 'en';
+
+        let state = {
+            target: 60, loopSec: 2, current: 60,
+            running: false, paused: false, waiting: false, alerted: false,
+            loop: true, modeDown: true, sound: true, visual: true, textVisible: false, theme: 'light',
+            volume: 5, soundType: 'siren', alarmDuration: 3.0, syncLoop: true, randomMelody: false,
+            precision: 1, endTime: 0, duration: 0, remainingOnPause: 0,
+            antiThrottle: true, wakeLock: false,
+            lang: defaultLang, titleUpdate: true,
+            totalRunTime: 0, activePreset: null
+        };
+
+        let lootCount = 0;
+        let pipWindow = null;
+        let animationFrameId = null;
+        let wakeLockObj = null;
+        let startTimeRef = 0;
+
+        const $ = (id) => (pipWindow && !pipWindow.closed ? pipWindow.document : document).getElementById(id);
+        const getBody = () => (pipWindow && !pipWindow.closed ? pipWindow.document.body : document.body);
+        const t = (key) => i18n[state.lang][key] || key;
+
+        // [PIP-FIX] The Chrome extension's content script (watcher.js) is bound to the
+        // ORIGINAL tab document and can never be injected into a Document Picture-in-Picture
+        // window (it's not a real tab). While PiP is active, #app-container (and the
+        // "alarm-state" class) lives inside pipWindow.document, so the extension was blind
+        // to alarms. This helper always mirrors the alarm class onto BOTH the currently
+        // visible body AND the original document.body, so the extension keeps working
+        // whether or not PiP is open.
+        const setAlarmClass = (on) => {
+            const b = getBody();
+            if (b) b.classList.toggle("alarm-state", on);
+            if (document.body && document.body !== b) {
+                document.body.classList.toggle("alarm-state", on);
+            }
+        };
+
+        // [RESET-SIGNAL] Mirrors the setAlarmClass() pattern above: the extension's
+        // content script (watcher.js) can only be injected into the real tab, never
+        // into a PiP window, so any DOM signal it needs to observe must always be
+        // reflected onto BOTH the currently visible body and the original
+        // document.body. Unlike "alarm-state" (an on/off class), a reset is a
+        // one-shot event, so we use a monotonically increasing counter attribute
+        // instead — watcher.js just needs to see the value change.
+        // `readyForResetSignals` stays false until the very first core.reset() call
+        // on page load finishes, so that initial setup never fires a spurious
+        // "play" signal to other tabs.
+        let readyForResetSignals = false;
+        let resetSeq = 0;
+        const notifyReset = () => {
+            if (!readyForResetSignals) return;
+            resetSeq++;
+            const b = getBody();
+            if (b) b.setAttribute("data-reset-seq", String(resetSeq));
+            if (document.body && document.body !== b) {
+                document.body.setAttribute("data-reset-seq", String(resetSeq));
+            }
+        };
+
+        const core = {
+            start: () => {
+                audio.init(); 
+                audio.stop(); 
+
+                if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                
+                if(state.antiThrottle) audio.toggleKeepAlive(true);
+                if(state.wakeLock && 'wakeLock' in navigator) navigator.wakeLock.request('screen').then(w => wakeLockObj = w).catch(()=>{});
+
+                const b = getBody();
+                b.classList.remove("is-paused");
+                setAlarmClass(false);
+                $('timerDisplay').classList.remove("paused-anim");
+                $('timerDisplay').style.color = "var(--text-main)"; 
+                $('statusLabel').style.color = "var(--accent)"; 
+                
+                if(state.loop) b.classList.add("is-loop");
+
+                state.waiting = false;
+                notifyReset(); // [RESET-SIGNAL] covers first click-to-start, wheel-triggered restart, Space-key start
+                let tVal = parseFloat($('targetTime').value);
+                state.target = isNaN(tVal) || tVal < 0 ? 100 : tVal;
+                if($('targetTime').value != state.target) $('targetTime').value = state.target;
+                
+                let lVal = parseFloat($('loopTime').value);
+                state.loopSec = isNaN(lVal) || lVal < 0 ? 10 : lVal;
+
+                state.duration = state.target; 
+                state.endTime = Date.now() + (state.duration * 1000);
+                state.alerted = false; state.running = true; state.paused = false;
+
+                startTimeRef = Date.now();
+                ui.updateTimer(state.duration);
+                ui.updateFavicon('active'); 
+
+                const s = $('statusLabel');
+                s.innerText = state.modeDown ? t('remaining') : t('elapsed');
+                
+                worker.postMessage('start');
+                core.visualLoop();
+            },
+
+            pause: () => {
+                state.paused = true; 
+                audio.stop();
+                worker.postMessage('stop');
+                if(animationFrameId) cancelAnimationFrame(animationFrameId);
+
+                state.remainingOnPause = state.endTime - Date.now();
+                if(startTimeRef > 0) state.totalRunTime += (Date.now() - startTimeRef);
+
+                getBody().classList.add("is-paused");
+                $('statusLabel').innerText = t('paused');
+                $('statusLabel').style.color = "var(--text-dim)";
+                $('timerDisplay').classList.add("paused-anim");
+                ui.updateFavicon('idle'); 
+                audio.playPip(220);
+                
+                audio.toggleKeepAlive(false);
+                if(wakeLockObj) { wakeLockObj.release(); wakeLockObj = null; }
+            },
+
+            resume: () => {
+                state.paused = false;
+                state.endTime = Date.now() + state.remainingOnPause;
+                startTimeRef = Date.now();
+
+                getBody().classList.remove("is-paused");
+                $('timerDisplay').classList.remove("paused-anim");
+                ui.updateFavicon('active'); 
+                audio.playPip(660);
+                
+                if(state.antiThrottle) audio.toggleKeepAlive(true);
+                if(state.wakeLock && 'wakeLock' in navigator) navigator.wakeLock.request('screen').then(w => wakeLockObj = w).catch(()=>{});
+                
+                worker.postMessage('start');
+                core.visualLoop();
+            },
+
+            reset: () => {
+                worker.postMessage('stop');
+                if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                audio.stop();
+                audio.toggleKeepAlive(false);
+                if(wakeLockObj) { wakeLockObj.release(); wakeLockObj = null; }
+
+                if(state.running && !state.paused && startTimeRef > 0) {
+                    state.totalRunTime += (Date.now() - startTimeRef);
+                }
+                startTimeRef = 0;
+
+                state.running = false; state.paused = false; state.waiting = false;
+                notifyReset(); // [RESET-SIGNAL] covers dblclick reset, KeyR, btnMode, loadPreset — but NOT the very first page-load reset (guarded by readyForResetSignals)
+                
+                getBody().classList.remove("is-paused", "is-loop");
+                setAlarmClass(false);
+                $('timerDisplay').classList.remove("paused-anim");
+                
+                const bar = $('progressFill');
+                bar.style.height = state.modeDown ? "100%" : "0%";
+                
+                const tVal = parseFloat($('targetTime').value);
+                state.target = isNaN(tVal) ? 100 : tVal;
+                state.current = state.target; 
+                
+                ui.renderTime(state.target);
+                $('timerDisplay').style.color = "var(--text-main)";
+                
+                $('statusLabel').innerText = t('ready');
+                $('statusLabel').style.color = "var(--text-dim)";
+                
+                ui.updateFavicon('idle'); 
+                document.title = "MesoTimer";
+                audio.playPip(150);
+                ui.updateStats();
+            },
+
+            check: () => {
+                if(state.paused || !state.running) return;
+                const now = Date.now();
+                let remaining = (state.endTime - now) / 1000;
+
+                if (!state.modeDown && !state.waiting) remaining = (state.duration - remaining);
+                
+                if (state.modeDown || state.waiting) { if (remaining < 0) remaining = 0; }
+                else { if (remaining > state.duration) remaining = state.duration; }
+
+                state.current = remaining;
+
+                if(state.titleUpdate) {
+                    if(state.precision > 0) document.title = `[${state.current.toFixed(state.precision)}] MesoTimer`;
+                    else document.title = `[${Math.ceil(state.current)}] MesoTimer`;
+                }
+
+                const isFinished = (state.modeDown || state.waiting) ? (now >= state.endTime) : (remaining >= state.target);
+                
+                if (isFinished) {
+                    if (!state.waiting) {
+                        if(!state.alerted) { 
+                            state.alerted = true; 
+                            core.triggerAlarm();
+                        }
+                    } else {
+                        if(state.loop) { 
+                            if(state.syncLoop) audio.stop(); 
+                            state.waiting = false; 
+                            setAlarmClass(false);
+                            notifyReset(); // [RESET-SIGNAL] automatic loop-restart after alarmDuration elapses
+                            ui.updateFavicon('active'); 
+
+                            state.duration = state.target;
+                            state.endTime = Date.now() + (state.duration * 1000);
+                            state.alerted = false; 
+                            const s = $('statusLabel');
+                            if(s) {
+                                s.innerText = state.modeDown ? t('remaining') : t('elapsed');
+                                s.style.color = "var(--accent)";
+                            }
+                        }
+                    }
+                }
+            },
+
+            visualLoop: () => {
+                if(state.paused || !state.running) return;
+                const now = Date.now();
+                let renderTime = (state.endTime - now) / 1000;
+                
+                if(state.modeDown || state.waiting) {
+                    renderTime = Math.max(0, renderTime);
+                } else {
+                    renderTime = state.duration - renderTime;
+                    renderTime = Math.min(state.duration, Math.max(0, renderTime));
+                }
+                ui.updateTimer(renderTime);
+                if(Math.floor(now/1000) % 5 === 0) ui.updateStats(true); 
+                animationFrameId = requestAnimationFrame(core.visualLoop);
+            },
+
+            triggerAlarm: () => {
+                setAlarmClass(true);
+                ui.updateFavicon('alarm'); 
+                audio.startAlarm();
+
+                if (state.loop) {
+                    ui.addLoot();
+                    state.waiting = true;
+                    state.duration = state.loopSec;
+                    
+                    if(state.duration <= 0) {
+                        state.waiting = false;
+                        state.duration = state.target;
+                        state.endTime = Date.now() + (state.duration * 1000);
+                        state.alerted = false;
+                        setAlarmClass(false);
+                        ui.updateFavicon('active');
+                    } else {
+                        state.endTime = Date.now() + (state.duration * 1000);
+                        const s = $('statusLabel');
+                        if(s) s.innerText = t('cooldown');
+                    }
+                } else {
+                    const d = $('timerDisplay'); if(d) d.innerText = t('loot');
+                    const s = $('statusLabel'); if(s) s.innerText = t('timeup');
+                }
+            }
+        };
+        
+        worker.onmessage = (e) => { if(e.data === 'tick') core.check(); };
+
+        const ui = {
+            renderTime: (val) => {
+                const d = $('timerDisplay');
+                if(!d) return;
+                if (state.precision > 0) {
+                    d.innerText = val.toFixed(state.precision);
+                } else {
+                    const intVal = Math.ceil(val);
+                    d.innerText = intVal;
+                }
+            },
+            updateTimer: (currentVal) => {
+                ui.renderTime(currentVal);
+                let pct = 0;
+                const total = state.waiting ? state.loopSec : state.target;
+                if(total > 0) pct = (currentVal / total) * 100;
+                else pct = 0;
+                const f = $('progressFill');
+                if(f) f.style.height = Math.max(0, Math.min(100, pct)) + "%";
+                const d = $('timerDisplay');
+                if(d) {
+                    if(state.modeDown && currentVal <= 10 && currentVal > 0) d.style.color = "var(--loop)";
+                    else d.style.color = "var(--text-main)";
+                }
+            },
+            updateFavicon: (status) => {
+                let color = "%2371717a"; 
+                if(status === 'active') color = "%2310b981"; 
+                if(status === 'alarm') color = "%23ef4444"; 
+                const svg = `<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22none%22 stroke=%22${color}%22 stroke-width=%2210%22/></svg>`;
+                const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+                link.type = 'image/svg+xml';
+                link.rel = 'icon';
+                link.href = 'data:image/svg+xml,' + svg;
+                document.getElementsByTagName('head')[0].appendChild(link);
+            },
+            addLoot: () => {
+                lootCount++;
+                const el = $('lootCount');
+                if(!el) return;
+                el.innerText = lootCount;
+                el.parentElement.classList.remove('pop');
+                void el.parentElement.offsetWidth;
+                el.parentElement.classList.add('pop');
+                ui.updateStats();
+            },
+            updateStats: (runningOnly) => {
+                const el = $('statsRunTime');
+                if(!el) return;
+                let total = state.totalRunTime;
+                if (total > 315360000000) { total = 0; state.totalRunTime = 0; } 
+
+                if(state.running && !state.paused && startTimeRef > 0) total += (Date.now() - startTimeRef);
+                const m = Math.floor(total / 60000);
+                const h = Math.floor(m / 60);
+                el.innerText = h > 0 ? `${h}h ${m%60}m` : `${m}m`;
+            },
+            createRipple: (e) => {
+                if(e.target.closest('.dock') || e.target.closest('.top-bar') || e.target.closest('.popup-content')) return;
+                const circle = document.createElement("div");
+                const doc = (pipWindow && !pipWindow.closed) ? pipWindow.document : document;
+                const d = circle.style;
+                d.width = d.height = "50px";
+                d.left = (e.clientX - 25) + "px";
+                d.top = (e.clientY - 25) + "px";
+                circle.classList.add("ripple");
+                doc.body.appendChild(circle);
+                setTimeout(() => circle.remove(), 600);
+            },
+            syncVisualState: (doc) => {
+                const b = doc.body;
+                b.classList.remove('is-paused');
+                if (state.paused) b.classList.add('is-paused');
+                const alarming = !!(state.alerted || (state.loop && state.waiting));
+                setAlarmClass(alarming);
+                
+                doc.documentElement.setAttribute('data-theme', state.theme);
+                if(state.visual) b.classList.remove("no-visual"); else b.classList.add("no-visual");
+                if(state.textVisible) b.classList.remove("no-text"); else b.classList.add("no-text");
+                
+                b.classList.remove("mode-ms", "mode-ms-1", "mode-ms-2");
+                if(state.precision === 1) b.classList.add("mode-ms-1");
+                if(state.precision === 2) b.classList.add("mode-ms-2");
+            },
+            updatePresetLabel: () => {
+                const label = $('activePresetLabel');
+                if(label) label.innerText = state.activePreset ? `[ Current: #${state.activePreset} ]` : `[ Current: None ]`;
+            },
+            sync: () => {
+                const doc = (pipWindow && !pipWindow.closed) ? pipWindow.document : document;
+                ui.syncVisualState(doc);
+                ui.updatePresetLabel();
+
+                const fields = ['targetTime','loopTime','volRange','alarmTimeRange','syncLoopCheck','randomMelodyCheck','soundTypeSel','antiThrottleCheck','wakeLockCheck','titleUpdateCheck'];
+                const vals = [state.target, state.loopSec, state.volume, state.alarmDuration, state.syncLoop, state.randomMelody, state.soundType, state.antiThrottle, state.wakeLock, state.titleUpdate];
+                
+                fields.forEach((id, i) => {
+                    const el = doc.getElementById(id);
+                    if(!el) return;
+                    if(el === doc.activeElement) return;
+                    if(el.type === 'checkbox') el.checked = vals[i];
+                    else el.value = vals[i];
+                });
+
+                const pBtn = doc.getElementById('btnPrecision');
+                if(pBtn) {
+                    if(state.precision === 0) pBtn.innerText = "0";
+                    if(state.precision === 1) pBtn.innerText = ".0";
+                    if(state.precision === 2) pBtn.innerText = ".00";
+                }
+
+                if(doc.getElementById('volLabel')) doc.getElementById('volLabel').innerText = state.volume + "%";
+                if(doc.getElementById('alarmTimeLabel')) doc.getElementById('alarmTimeLabel').innerText = state.alarmDuration + "s";
+                if(doc.getElementById('lootCount')) doc.getElementById('lootCount').innerText = lootCount;
+
+                const krBtn = doc.querySelector("button[onclick*='kr']");
+                const enBtn = doc.querySelector("button[onclick*='en']");
+                if(krBtn) krBtn.className = state.lang==='kr' ? 'lang-btn active' : 'lang-btn';
+                if(enBtn) enBtn.className = state.lang==='en' ? 'lang-btn active' : 'lang-btn';
+
+                doc.querySelectorAll('[data-t]').forEach(el => {
+                    el.innerText = t(el.getAttribute('data-t'));
+                });
+
+                if(!state.running) doc.getElementById('statusLabel').innerText = t('ready');
+
+                const setClass = (id, active) => { const e = doc.getElementById(id); if(e) e.className = active ? "icon-btn active" : "icon-btn"; };
+                setClass('btnVisual', state.visual);
+                setClass('btnSound', state.sound);
+                setClass('btnText', state.textVisible);
+                setClass('btnPip', !!pipWindow);
+
+                const lg = doc.getElementById('loopGroup');
+                if(lg) lg.classList.toggle("loop-active", state.loop);
+
+                const btnMode = doc.getElementById('btnMode');
+                if(btnMode) {
+                    btnMode.innerHTML = state.modeDown ? 
+                        '<svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>' : 
+                        '<svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"/></svg>';
+                    // [PIP-FIX] modeDown=false (count-UP/elapsed) makes the number climb
+                    // from 0 up to the target every loop cycle, which can look like an
+                    // "infinitely growing" timer if you only glance at it. A mis-tap on this
+                    // tiny button inside the auto-scaled PiP dock is the most likely way this
+                    // gets flipped by accident, so make the state loudly visible.
+                    btnMode.classList.toggle('mode-warning', !state.modeDown);
+                    btnMode.title = state.modeDown ? 'Count Direction (Down)' : '⚠ Count Direction: UP (elapsed) — tap to switch back to countdown';
+                }
+                
+                ui.updateStats();
+            }
+        };
+
+        const actions = {
+            togglePiP: async () => {
+                if (!("documentPictureInPicture" in window)) return alert("Not Supported");
+                if (pipWindow) { pipWindow.close(); return; }
+                state.target = parseFloat($('targetTime').value); state.loopSec = parseFloat($('loopTime').value);
+                pipWindow = await documentPictureInPicture.requestWindow({ width: 360, height: 460 });
+                [...document.styleSheets].forEach(sheet => { try { const style = document.createElement('style'); style.textContent = [...sheet.cssRules].map(r => r.cssText).join(''); pipWindow.document.head.appendChild(style); } catch(e){} });
+                pipWindow.document.body.append(document.getElementById('app-container'));
+                setupEvents(pipWindow.document);
+                
+                autoFitDock(pipWindow);
+                pipWindow.addEventListener('resize', () => autoFitDock(pipWindow));
+                ui.syncVisualState(pipWindow.document);
+
+                pipWindow.addEventListener('pagehide', (event) => { 
+                    const app = pipWindow.document.getElementById('app-container');
+                    if(app) document.body.append(app); else location.reload();
+                    pipWindow = null; 
+                    const dock = document.getElementById('controls');
+                    if(dock) { dock.style.transform = ''; dock.style.transformOrigin = ''; }
+                    ui.syncVisualState(document);
+                    ui.sync(); 
+                    setupEvents(document);
+                    ui.updateTimer(state.running ? state.current : state.target);
+                });
+                ui.sync();
+            },
+            togglePrecision: () => {
+                state.precision = (state.precision + 1) % 3; 
+                actions.save();
+            },
+            setLang: (l) => { state.lang = l; actions.save(); },
+            savePreset: (slot) => {
+                localStorage.setItem('mesoTimer_preset_' + slot, JSON.stringify(state));
+                state.activePreset = slot;
+                actions.save();
+            },
+            loadPreset: (slot) => {
+                const s = localStorage.getItem('mesoTimer_preset_' + slot);
+                if(s) {
+                    core.reset();
+                    state = { ...state, ...JSON.parse(s) };
+                    state.running = false; state.paused = false; 
+                    state.activePreset = slot;
+                    ui.sync();
+                } else {
+                    alert("Empty Slot " + slot);
+                }
+            },
+            save: () => {
+                const tVal = parseFloat($('targetTime').value);
+                state.target = (isNaN(tVal) || tVal < 0) ? 100 : tVal;
+                const lVal = parseFloat($('loopTime').value);
+                state.loopSec = (isNaN(lVal) || lVal < 0) ? 10 : lVal;
+                localStorage.setItem('mesoTimer_v53', JSON.stringify(state));
+                ui.sync();
+            },
+            load: () => {
+                const s = localStorage.getItem('mesoTimer_v53');
+                if (s) { 
+                    state = { ...state, ...JSON.parse(s) }; 
+                    if(state.totalRunTime > 315360000000) state.totalRunTime = 0; 
+                }
+            },
+            resetStats: () => {
+                // Instant Reset with Feedback
+                state.totalRunTime = 0;
+                startTimeRef = Date.now();
+                const el = $('statsRunTime');
+                if(el) {
+                    const original = el.innerText;
+                    el.innerText = "Reset!";
+                    setTimeout(() => ui.updateStats(), 600);
+                }
+                actions.save();
+            }
+        };
+
+        // [PIP-FIX] Below MIN_DOCK_SCALE the dock buttons (incl. the count-direction
+        // toggle btnMode) become small enough that an accidental tap is easy in the
+        // narrow PiP window. Floor the scale so it may overflow slightly rather than
+        // shrink into an unreliable tap target.
+        const MIN_DOCK_SCALE = 0.72;
+        function autoFitDock(win) {
+            if(!win) return;
+            const doc = win.document;
+            const dock = doc.getElementById('controls');
+            if(!dock) return;
+            dock.style.transform = 'none';
+            const winW = win.innerWidth;
+            const dockW = dock.scrollWidth + 10; 
+            if (winW < dockW) {
+                const scale = Math.max(MIN_DOCK_SCALE, winW / dockW);
+                dock.style.transformOrigin = 'bottom center';
+                dock.style.transform = `scale(${scale})`;
+            }
+        }
+
+        function setupEvents(doc) {
+            const click = (id, fn) => { const el = doc.getElementById(id); if(el) el.onclick = (e) => { e.stopPropagation(); fn(e); }; };
+            const change = (id, fn) => { const el = doc.getElementById(id); if(el) { el.onchange = (e) => { fn(e.target); actions.save(); }; el.oninput = (e) => { fn(e.target); actions.save(); }; } };
+
+            // [PIP-FIX] When PiP is open, #app-container is physically moved into
+            // pipWindow.document, leaving this original tab's <body> empty. Its old
+            // click/dblclick/wheel handlers stay bound though, so a stray click on that
+            // now-blank tab (e.g. switching back to it behind the floating PiP window)
+            // could still start/pause/reset the timer unexpectedly. Guard: only the
+            // document that currently "owns" the UI (per getBody()) should react.
+            const isStaleMainDoc = () => doc === document && pipWindow && !pipWindow.closed;
+
+            doc.body.onclick = (e) => {
+                if (isStaleMainDoc()) return;
+                if (e.target.closest('.dock') || e.target.closest('.top-bar') || e.target.closest('.popup-content') || e.target.closest('#overlay')) return;
+                const m = doc.getElementById('menuPopup');
+                if(m && m.classList.contains('show') && !e.target.closest('.popup-content')) { 
+                    m.classList.remove('show'); 
+                    doc.getElementById('topBar').classList.remove('menu-open');
+                } else if (e.target.closest('.popup-content')) { return; }
+                
+                ui.createRipple(e); 
+                audio.init();
+
+                if(state.running && !state.paused) core.pause();
+                else if(state.running && state.paused) core.resume();
+                else core.start();
+            };
+            
+            doc.body.ondblclick = (e) => { if(isStaleMainDoc()) return; if(e.target.closest('.dock') || e.target.closest('.top-bar')) return; core.reset(); };
+            
+            let wheelTimer;
+            doc.onwheel = (e) => {
+                if(isStaleMainDoc()) return;
+                e.preventDefault();
+                if(wheelTimer) return;
+                wheelTimer = setTimeout(() => wheelTimer = null, 80);
+                audio.init();
+                ui.addLoot(); 
+                audio.playPip(400);
+                core.start();
+            };
+
+            click('btnLoot', () => { lootCount = 0; $('lootCount').innerText = "0"; audio.playPip(1000); });
+            click('btnTheme', () => { state.theme = state.theme==='dark'?'light':'dark'; actions.save(); });
+            click('btnMenu', () => { const m = $('menuPopup'); m.classList.toggle('show'); $('topBar').classList.toggle('menu-open', m.classList.contains('show')); });
+            click('btnResetConfig', () => { if(confirm("Reset settings?")) { localStorage.removeItem('mesoTimer_v53'); location.reload(); }});
+            
+            click('btnStatsReset', actions.resetStats);
+
+            click('btnLoop', () => { state.loop = !state.loop; actions.save(); });
+            click('btnMode', () => { state.modeDown = !state.modeDown; actions.save(); core.reset(); });
+            click('btnText', () => { state.textVisible = !state.textVisible; actions.save(); });
+            click('btnVisual', () => { state.visual = !state.visual; actions.save(); });
+            click('btnSound', () => { state.sound = !state.sound; actions.save(); });
+            click('btnPip', () => actions.togglePiP());
+
+            change('targetTime', (el) => { const v = parseFloat(el.value); if(!isNaN(v)) state.target = v; });
+            change('loopTime', (el) => { const v = parseFloat(el.value); if(!isNaN(v)) state.loopSec = v; });
+            
+            change('volRange', (el) => { state.volume = el.value; $('volLabel').innerText = el.value + "%"; });
+            change('alarmTimeRange', (el) => { state.alarmDuration = el.value; $('alarmTimeLabel').innerText = el.value + "s"; });
+            change('syncLoopCheck', (el) => state.syncLoop = el.checked);
+            change('randomMelodyCheck', (el) => state.randomMelody = el.checked);
+            change('soundTypeSel', (el) => { state.soundType = el.value; audio.playPip(440); });
+            
+            change('titleUpdateCheck', (el) => { 
+                state.titleUpdate = el.checked; 
+                if(!el.checked) document.title = "MesoTimer";
+            });
+            change('antiThrottleCheck', (el) => { 
+                state.antiThrottle = el.checked; 
+                if(state.running && !state.paused) audio.toggleKeepAlive(el.checked);
+            });
+            change('wakeLockCheck', (el) => { 
+                state.wakeLock = el.checked;
+                if(state.running && !state.paused && el.checked) {
+                    if('wakeLock' in navigator) navigator.wakeLock.request('screen').then(w => wakeLockObj = w).catch(()=>{});
+                } else {
+                    if(wakeLockObj) { wakeLockObj.release(); wakeLockObj = null; }
+                }
+            });
+        }
+
+        document.getElementById('overlay').onclick = function() {
+            this.style.opacity = 0; setTimeout(() => this.style.display = 'none', 500); audio.init();
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if(e.target.tagName === 'INPUT') return;
+            if(e.code === 'Space') { e.preventDefault(); if(state.running && !state.paused) core.pause(); else if(state.paused) core.resume(); else core.start(); }
+            if(e.code === 'KeyR') core.reset();
+            if(e.code === 'KeyL') { state.loop = !state.loop; actions.save(); }
+            if(e.code === 'KeyM') { state.sound = !state.sound; actions.save(); }
+            // [v5.3] PiP Toggle Logic
+            if(e.code === 'KeyP') {
+                if(pipWindow) pipWindow.close();
+                else actions.togglePiP();
+            }
+            if(e.code === 'KeyT') { state.theme = state.theme==='dark'?'light':'dark'; actions.save(); }
+        });
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === 'visible' && state.running) {
+                core.check(); 
+                ui.updateTimer(state.current);
+            }
+        });
+
+        actions.load();
+        setupEvents(document);
+        ui.sync();
+        core.reset();
+        readyForResetSignals = true; // [RESET-SIGNAL] initial page-load reset above must NOT trigger a play signal
+    </script>
+</body>
+</html>

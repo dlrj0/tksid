@@ -1,0 +1,194 @@
+# MesoTimer index.html — PIP-FIX patch
+#
+# 대상 파일: 원본 타이머 HTML (index.html / index_-_복사본.html)
+# 적용 방법: `patch -p1 < timer-html-pip-fix.diff`  또는  `git apply timer-html-pip-fix.diff`
+#            (파일명이 다르면 --label의 index.html 경로를 실제 경로로 바꿔서 적용하세요)
+#
+# 요약 (자세한 설명은 README.md의 "PIP 모드 관련 수정 사항" 참고):
+#   1) alarm-state 클래스를 PIP 창과 원래 탭 양쪽에 항상 동시 반영 (setAlarmClass 헬퍼)
+#      -> PIP 모드에서 확장 프로그램의 알람 감지 불가 문제 해결
+#   2) PIP 조작부(dock) 최소 배율 지정 + 기본 PIP 창 크기 확대 + 카운트 방향
+#      버튼 오조작 시 시각적 경고(mode-warning) 추가
+#      -> PIP에서 카운트 방향이 실수로 바뀌어 숫자가 계속 증가하는 것처럼 보이던 문제 완화
+#   3) PIP가 열려 내용이 비워진 원래 탭의 클릭/더블클릭/휠 입력이 타이머에 영향을
+#      주지 않도록 가드 추가 (안전장치)
+#
+# 기존 기능/레이아웃은 변경하지 않았으며, 위 3가지와 직접 관련된 코드만 수정했습니다.
+
+--- a/index.html (original)
++++ b/index.html (PIP-FIX)
+@@ -112,6 +112,8 @@
+         .icon-btn:hover { background: var(--surface-hover); color: var(--text-main); border-color: var(--text-dim); }
+         .icon-btn.active { color: var(--active); background: rgba(59, 130, 246, 0.15); border-color: var(--active); }
+         .icon-btn svg { width: 20px; height: 20px; fill: currentColor; }
++        .icon-btn.mode-warning { color: var(--danger); background: rgba(239, 68, 68, 0.15); border-color: var(--danger); animation: modeWarnPulse 1.2s infinite; }
++        @keyframes modeWarnPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+ 
+         .popup-wrapper { position: relative; }
+         .popup-content {
+@@ -546,6 +548,21 @@
+         const getBody = () => (pipWindow && !pipWindow.closed ? pipWindow.document.body : document.body);
+         const t = (key) => i18n[state.lang][key] || key;
+ 
++        // [PIP-FIX] The Chrome extension's content script (watcher.js) is bound to the
++        // ORIGINAL tab document and can never be injected into a Document Picture-in-Picture
++        // window (it's not a real tab). While PiP is active, #app-container (and the
++        // "alarm-state" class) lives inside pipWindow.document, so the extension was blind
++        // to alarms. This helper always mirrors the alarm class onto BOTH the currently
++        // visible body AND the original document.body, so the extension keeps working
++        // whether or not PiP is open.
++        const setAlarmClass = (on) => {
++            const b = getBody();
++            if (b) b.classList.toggle("alarm-state", on);
++            if (document.body && document.body !== b) {
++                document.body.classList.toggle("alarm-state", on);
++            }
++        };
++
+         const core = {
+             start: () => {
+                 audio.init(); 
+@@ -557,7 +574,8 @@
+                 if(state.wakeLock && 'wakeLock' in navigator) navigator.wakeLock.request('screen').then(w => wakeLockObj = w).catch(()=>{});
+ 
+                 const b = getBody();
+-                b.classList.remove("alarm-state", "is-paused");
++                b.classList.remove("is-paused");
++                setAlarmClass(false);
+                 $('timerDisplay').classList.remove("paused-anim");
+                 $('timerDisplay').style.color = "var(--text-main)"; 
+                 $('statusLabel').style.color = "var(--accent)"; 
+@@ -638,7 +656,8 @@
+ 
+                 state.running = false; state.paused = false; state.waiting = false;
+                 
+-                getBody().classList.remove("alarm-state", "is-paused", "is-loop");
++                getBody().classList.remove("is-paused", "is-loop");
++                setAlarmClass(false);
+                 $('timerDisplay').classList.remove("paused-anim");
+                 
+                 const bar = $('progressFill');
+@@ -689,8 +708,7 @@
+                         if(state.loop) { 
+                             if(state.syncLoop) audio.stop(); 
+                             state.waiting = false; 
+-                            const b = getBody();
+-                            if(b) b.classList.remove("alarm-state");
++                            setAlarmClass(false);
+                             ui.updateFavicon('active'); 
+ 
+                             state.duration = state.target;
+@@ -723,8 +741,7 @@
+             },
+ 
+             triggerAlarm: () => {
+-                const b = getBody();
+-                if(b) b.classList.add("alarm-state");
++                setAlarmClass(true);
+                 ui.updateFavicon('alarm'); 
+                 audio.startAlarm();
+ 
+@@ -738,7 +755,7 @@
+                         state.duration = state.target;
+                         state.endTime = Date.now() + (state.duration * 1000);
+                         state.alerted = false;
+-                        if(b) b.classList.remove("alarm-state");
++                        setAlarmClass(false);
+                         ui.updateFavicon('active');
+                     } else {
+                         state.endTime = Date.now() + (state.duration * 1000);
+@@ -825,9 +842,10 @@
+             },
+             syncVisualState: (doc) => {
+                 const b = doc.body;
+-                b.classList.remove('alarm-state', 'is-paused');
++                b.classList.remove('is-paused');
+                 if (state.paused) b.classList.add('is-paused');
+-                if (state.alerted || (state.loop && state.waiting)) b.classList.add('alarm-state');
++                const alarming = !!(state.alerted || (state.loop && state.waiting));
++                setAlarmClass(alarming);
+                 
+                 doc.documentElement.setAttribute('data-theme', state.theme);
+                 if(state.visual) b.classList.remove("no-visual"); else b.classList.add("no-visual");
+@@ -889,9 +907,18 @@
+                 if(lg) lg.classList.toggle("loop-active", state.loop);
+ 
+                 const btnMode = doc.getElementById('btnMode');
+-                if(btnMode) btnMode.innerHTML = state.modeDown ? 
+-                    '<svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>' : 
+-                    '<svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"/></svg>';
++                if(btnMode) {
++                    btnMode.innerHTML = state.modeDown ? 
++                        '<svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>' : 
++                        '<svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"/></svg>';
++                    // [PIP-FIX] modeDown=false (count-UP/elapsed) makes the number climb
++                    // from 0 up to the target every loop cycle, which can look like an
++                    // "infinitely growing" timer if you only glance at it. A mis-tap on this
++                    // tiny button inside the auto-scaled PiP dock is the most likely way this
++                    // gets flipped by accident, so make the state loudly visible.
++                    btnMode.classList.toggle('mode-warning', !state.modeDown);
++                    btnMode.title = state.modeDown ? 'Count Direction (Down)' : '⚠ Count Direction: UP (elapsed) — tap to switch back to countdown';
++                }
+                 
+                 ui.updateStats();
+             }
+@@ -902,7 +929,7 @@
+                 if (!("documentPictureInPicture" in window)) return alert("Not Supported");
+                 if (pipWindow) { pipWindow.close(); return; }
+                 state.target = parseFloat($('targetTime').value); state.loopSec = parseFloat($('loopTime').value);
+-                pipWindow = await documentPictureInPicture.requestWindow({ width: 320, height: 420 });
++                pipWindow = await documentPictureInPicture.requestWindow({ width: 360, height: 460 });
+                 [...document.styleSheets].forEach(sheet => { try { const style = document.createElement('style'); style.textContent = [...sheet.cssRules].map(r => r.cssText).join(''); pipWindow.document.head.appendChild(style); } catch(e){} });
+                 pipWindow.document.body.append(document.getElementById('app-container'));
+                 setupEvents(pipWindow.document);
+@@ -975,6 +1002,11 @@
+             }
+         };
+ 
++        // [PIP-FIX] Below MIN_DOCK_SCALE the dock buttons (incl. the count-direction
++        // toggle btnMode) become small enough that an accidental tap is easy in the
++        // narrow PiP window. Floor the scale so it may overflow slightly rather than
++        // shrink into an unreliable tap target.
++        const MIN_DOCK_SCALE = 0.72;
+         function autoFitDock(win) {
+             if(!win) return;
+             const doc = win.document;
+@@ -984,7 +1016,7 @@
+             const winW = win.innerWidth;
+             const dockW = dock.scrollWidth + 10; 
+             if (winW < dockW) {
+-                const scale = winW / dockW;
++                const scale = Math.max(MIN_DOCK_SCALE, winW / dockW);
+                 dock.style.transformOrigin = 'bottom center';
+                 dock.style.transform = `scale(${scale})`;
+             }
+@@ -994,7 +1026,16 @@
+             const click = (id, fn) => { const el = doc.getElementById(id); if(el) el.onclick = (e) => { e.stopPropagation(); fn(e); }; };
+             const change = (id, fn) => { const el = doc.getElementById(id); if(el) { el.onchange = (e) => { fn(e.target); actions.save(); }; el.oninput = (e) => { fn(e.target); actions.save(); }; } };
+ 
++            // [PIP-FIX] When PiP is open, #app-container is physically moved into
++            // pipWindow.document, leaving this original tab's <body> empty. Its old
++            // click/dblclick/wheel handlers stay bound though, so a stray click on that
++            // now-blank tab (e.g. switching back to it behind the floating PiP window)
++            // could still start/pause/reset the timer unexpectedly. Guard: only the
++            // document that currently "owns" the UI (per getBody()) should react.
++            const isStaleMainDoc = () => doc === document && pipWindow && !pipWindow.closed;
++
+             doc.body.onclick = (e) => {
++                if (isStaleMainDoc()) return;
+                 if (e.target.closest('.dock') || e.target.closest('.top-bar') || e.target.closest('.popup-content') || e.target.closest('#overlay')) return;
+                 const m = doc.getElementById('menuPopup');
+                 if(m && m.classList.contains('show') && !e.target.closest('.popup-content')) { 
+@@ -1010,10 +1051,11 @@
+                 else core.start();
+             };
+             
+-            doc.body.ondblclick = (e) => { if(e.target.closest('.dock') || e.target.closest('.top-bar')) return; core.reset(); };
++            doc.body.ondblclick = (e) => { if(isStaleMainDoc()) return; if(e.target.closest('.dock') || e.target.closest('.top-bar')) return; core.reset(); };
+             
+             let wheelTimer;
+             doc.onwheel = (e) => {
++                if(isStaleMainDoc()) return;
+                 e.preventDefault();
+                 if(wheelTimer) return;
+                 wheelTimer = setTimeout(() => wheelTimer = null, 80);
